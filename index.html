@@ -7,6 +7,9 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Fridge Guard">
   <meta name="theme-color" content="#0d1b22">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <meta http-equiv="Pragma" content="no-cache">
+  <meta http-equiv="Expires" content="0">
   <title>Fridge Temperature Cloud Monitor</title>
 
   <!-- Google Font & Chart.js -->
@@ -550,8 +553,11 @@
 <body>
 
   <div class="app-container">
-
-    <!-- Top Navigation Header -->
+    <!-- Instant Update Banner -->
+    <div id="updateBanner" style="display:none;background:linear-gradient(90deg, #0284c7, #00d2d3);color:#091318;font-weight:700;font-size:0.83rem;padding:10px 14px;border-radius:12px;cursor:pointer;display:flex;align-items:center;justify-content:space-between;box-shadow:0 4px 15px rgba(0,210,211,0.25);margin-bottom:4px;">
+      <span>✨ New dashboard update available!</span>
+      <span style="text-decoration:underline">Tap to reload &rarr;</span>
+    </div>
     <header>
       <div class="brand">
         <div class="brand-icon">
@@ -710,6 +716,12 @@
       <button class="action-pill" id="exportCsvBtn">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
         Export CSV
+      </button>
+
+      <!-- Force Reload / Clear Cache for iPhone -->
+      <button class="action-pill" id="forceReloadBtn" title="Bypass iOS/browser cache and reload latest version">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 21h5v-5"/></svg>
+        Reload App
       </button>
     </section>
 
@@ -1206,9 +1218,44 @@
       URL.revokeObjectURL(url);
     });
 
+    // Force Reload (Bypasses iPhone / iOS standalone Web Clip cache)
+    function forceReload() {
+      if (navigator.vibrate) navigator.vibrate(50);
+      const url = new URL(window.location.href);
+      url.searchParams.set('v', Date.now());
+      window.location.replace(url.toString());
+    }
+
+    $('forceReloadBtn').addEventListener('click', forceReload);
+    $('updateBanner').addEventListener('click', forceReload);
+
+    let lastTap = 0;
+    $('refreshBtn').addEventListener('click', () => {
+      const now = Date.now();
+      if (now - lastTap < 400) {
+        forceReload();
+      }
+      lastTap = now;
+    });
+
+    const APP_VERSION = '1.3';
+    async function checkVersion() {
+      try {
+        const res = await fetch('version.json?_t=' + Date.now(), { cache: 'no-store' });
+        if (res.ok) {
+          const d = await res.json();
+          if (d.version && d.version !== APP_VERSION) {
+            $('updateBanner').style.display = 'flex';
+          }
+        }
+      } catch (e) {}
+    }
+
     // Start
     poll();
+    checkVersion();
     setInterval(poll, 15000);
+    setInterval(checkVersion, 30000);
   </script>
 </body>
 </html>
