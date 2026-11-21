@@ -1,0 +1,180 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-title" content="Fridge Cloud">
+  <title>Fridge temperature (Cloud)</title>
+  <style>
+    :root{--bg:#eef3f5;--ink:#0f2a35;--mute:#5d7480;--line:#0a7d8c;--ok:#1d7a4d;--bad:#c23b4e;--grid:#d3dfe4;--btn:#dce8ec}
+    @media(prefers-color-scheme:dark){:root{--bg:#0b1a20;--ink:#e6f1f4;--mute:#8aa3ae;--line:#5ccfe0;--ok:#6fd49b;--bad:#ff7d8d;--grid:#1f343d;--btn:#16303a}}
+    *{box-sizing:border-box}
+    body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+    padding:env(safe-area-inset-top) 18px env(safe-area-inset-bottom)}
+    main{max-width:720px;margin:0 auto;padding:28px 0}
+    h1{font-size:1rem;font-weight:500;color:var(--mute);margin:0}
+    .now{display:flex;align-items:baseline;gap:6px;margin:6px 0 4px}
+    #t{font-size:clamp(4.5rem,22vw,8rem);font-weight:300;letter-spacing:-.04em;font-variant-numeric:tabular-nums;line-height:1}
+    .u{font-size:1.8rem;color:var(--mute)}
+    #s{font-weight:600}
+    #s.ok{color:var(--ok)}#s.bad{color:var(--bad)}
+    .stats{display:flex;gap:28px;margin:22px 0;padding:14px 0;border-top:1px solid var(--grid);border-bottom:1px solid var(--grid)}
+    .stats b{display:block;font-size:1.4rem;font-weight:500;font-variant-numeric:tabular-nums}
+    .stats small{color:var(--mute)}
+    .tabs{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
+    button{font:inherit;border:0;border-radius:8px;padding:7px 14px;background:var(--btn);color:var(--ink);cursor:pointer}
+    button[aria-pressed=true]{background:var(--line);color:var(--bg);font-weight:600}
+    canvas{width:100%;height:260px;display:block}
+    #u{color:var(--mute);font-size:.9rem;margin:10px 0 0}
+  </style>
+</head>
+<body>
+  <main>
+    <h1>Fridge temperature &middot; Cloud</h1>
+    <div class="now"><span id="t">--</span><span class="u">&deg;C</span></div>
+    <div id="s">Connecting</div>
+    <div class="stats">
+      <div><b id="min">--</b><small>lowest</small></div>
+      <div><b id="avg">--</b><small>average</small></div>
+      <div><b id="max">--</b><small>highest</small></div>
+    </div>
+    <div class="tabs" id="tabs">
+      <button data-h="1" aria-pressed="false">1 hour</button>
+      <button data-h="6" aria-pressed="true">6 hours</button>
+      <button data-h="24" aria-pressed="false">24 hours</button>
+      <button data-h="168" aria-pressed="false">7 days</button>
+    </div>
+    <canvas id="c" role="img" aria-label="Temperature graph"></canvas>
+    <p id="u"></p>
+  </main>
+
+  <script>
+    const SUPABASE_URL = "https://sippspvglqqemotxgsxl.supabase.co";
+    const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpcHBzcHZnbHFxZW1vdHhnc3hsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUyNzk4MTcsImV4cCI6MjExMDg1NTgxN30.Z54wC47W6N2roQfKQvAA1uL5z6VQBjX3a53beNQ-l4w";
+    const WARN = 8;
+    const STALE_MINUTES = 5;
+
+    const $ = id => document.getElementById(id);
+    const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+    let rows = [], hrs = 6, err = false;
+
+    function render() {
+      const s = $('s');
+      const latest = rows.length ? rows[rows.length - 1] : null;
+      const t = latest ? latest.temp_c : null;
+      const ageMin = latest ? (Date.now() - new Date(latest.created_at).getTime()) / 60000 : Infinity;
+
+      $('t').textContent = (t === null || err) ? '--' : t.toFixed(1);
+
+      if (err) {
+        s.textContent = 'Cannot reach cloud database';
+        s.className = 'bad';
+      } else if (!latest) {
+        s.textContent = 'No readings logged yet';
+        s.className = 'bad';
+      } else if (ageMin > STALE_MINUTES) {
+        s.textContent = `ESP32 offline (last seen ${Math.round(ageMin)}m ago)`;
+        s.className = 'bad';
+      } else if (t === null) {
+        s.textContent = 'No sensor reading, check probe wiring';
+        s.className = 'bad';
+      } else if (t > WARN) {
+        s.textContent = 'Too warm';
+        s.className = 'bad';
+      } else {
+        s.textContent = 'Fridge is cold enough';
+        s.className = 'ok';
+      }
+
+      const valid = rows.map(r => r.temp_c).filter(v => v !== null);
+      $('min').textContent = valid.length ? Math.min(...valid).toFixed(1) : '--';
+      $('max').textContent = valid.length ? Math.max(...valid).toFixed(1) : '--';
+      $('avg').textContent = valid.length ? (valid.reduce((a, b) => a + b, 0) / valid.length).toFixed(1) : '--';
+      draw(rows, valid);
+    }
+
+    function draw(data, valid) {
+      const c = $('c'), r = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
+      c.width = w * r; c.height = h * r;
+      const g = c.getContext('2d');
+      g.scale(r, r); g.font = '12px system-ui'; g.fillStyle = css('--mute');
+
+      if (valid.length < 2) {
+        g.fillText('Waiting for at least 2 logged readings in this window.', 4, h / 2);
+        return;
+      }
+
+      const lo = Math.floor(Math.min(...valid, WARN) - 1);
+      const hi = Math.ceil(Math.max(...valid, WARN) + 1);
+      const L = 30, B = 20, T = 6, R = 4, pw = w - L - R, ph = h - T - B;
+      const tMin = new Date(data[0].created_at).getTime();
+      const tMax = new Date(data[data.length - 1].created_at).getTime();
+      const span = Math.max(tMax - tMin, 1);
+
+      const X = ts => L + pw * (new Date(ts).getTime() - tMin) / span;
+      const Y = y => T + ph * (1 - (y - lo) / (hi - lo));
+
+      g.lineWidth = 1; g.strokeStyle = css('--grid');
+      for (let k = 0; k <= 4; k++) {
+        const y = lo + (hi - lo) * k / 4;
+        g.beginPath(); g.moveTo(L, Y(y)); g.lineTo(w - R, Y(y)); g.stroke();
+        g.fillText(y.toFixed(0), 2, Y(y) + 4);
+      }
+
+      g.setLineDash([5, 5]); g.strokeStyle = css('--bad');
+      g.beginPath(); g.moveTo(L, Y(WARN)); g.lineTo(w - R, Y(WARN)); g.stroke();
+      g.setLineDash([]);
+
+      g.strokeStyle = css('--line'); g.lineWidth = 2; g.lineJoin = 'round';
+      g.beginPath();
+      let pen = false;
+      data.forEach(row => {
+        if (row.temp_c === null) { pen = false; return; }
+        pen ? g.lineTo(X(row.created_at), Y(row.temp_c)) : g.moveTo(X(row.created_at), Y(row.temp_c));
+        pen = true;
+      });
+      g.stroke();
+
+      g.fillStyle = css('--mute');
+      const label = hrs >= 24 ? (hrs / 24) + 'd ago' : hrs + 'h ago';
+      g.fillText(label, L, h - 5);
+      g.fillText('now', w - R - 24, h - 5);
+    }
+
+    async function poll() {
+      const since = new Date(Date.now() - hrs * 3600 * 1000).toISOString();
+      const url = `${SUPABASE_URL}/rest/v1/fridge_readings?select=created_at,temp_c&created_at=gte.${encodeURIComponent(since)}&order=created_at.asc&limit=10080`;
+      try {
+        const res = await fetch(url, {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`
+          }
+        });
+        if (!res.ok) throw new Error(res.status);
+        rows = await res.json();
+        err = false;
+        const lastTs = rows.length ? new Date(rows[rows.length - 1].created_at).toLocaleTimeString() : 'never';
+        $('u').textContent = `Synced ${new Date().toLocaleTimeString()} · Last reading: ${lastTs}`;
+      } catch (e) {
+        err = true;
+        $('u').textContent = 'Cloud sync failed, retrying in 15s';
+      }
+      render();
+    }
+
+    $('tabs').addEventListener('click', e => {
+      const b = e.target.closest('button');
+      if (!b) return;
+      hrs = +b.dataset.h;
+      document.querySelectorAll('#tabs button').forEach(x => x.setAttribute('aria-pressed', x === b));
+      poll();
+    });
+
+    addEventListener('resize', render);
+    poll();
+    setInterval(poll, 15000);
+  </script>
+</body>
+</html>
