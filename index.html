@@ -642,7 +642,7 @@
           Average
         </div>
         <div class="stat-val" id="statAvg">--</div>
-        <div class="stat-sub">Normal: 2&ndash;5&deg;C</div>
+        <div class="stat-sub" id="statAvgSub">Normal: 2&ndash;8&deg;C</div>
       </div>
 
       <div class="stat-card">
@@ -651,7 +651,7 @@
           Highest
         </div>
         <div class="stat-val" id="statMax">--</div>
-        <div class="stat-sub" id="statMaxTime">Warning: &gt;8&deg;C</div>
+        <div class="stat-sub" id="statMaxTime">Limit: 8&deg;C</div>
       </div>
     </section>
 
@@ -745,7 +745,8 @@
   <script>
     const SUPABASE_URL = "https://sippspvglqqemotxgsxl.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpcHBzcHZnbHFxZW1vdHhnc3hsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUyNzk4MTcsImV4cCI6MjExMDg1NTgxN30.Z54wC47W6N2roQfKQvAA1uL5z6VQBjX3a53beNQ-l4w";
-    const WARN_TEMP_C = 8.0;
+    const MIN_NORMAL_C = 2.0;
+    const MAX_NORMAL_C = 8.0;
     const STALE_MINUTES = 5;
 
     const $ = id => document.getElementById(id);
@@ -936,16 +937,21 @@
         badge.className = 'status-badge warn';
         badgeText.textContent = 'Probe Disconnected';
         diag.style.display = 'flex';
-      } else if (t > WARN_TEMP_C) {
+      } else if (t > MAX_NORMAL_C) {
         badge.className = 'status-badge bad';
-        badgeText.textContent = `Too Warm (> ${toDisp(WARN_TEMP_C).toFixed(0)}°${unit})`;
+        badgeText.textContent = `Too Warm (> ${toDisp(MAX_NORMAL_C).toFixed(0)}°${unit})`;
         diag.style.display = 'none';
         if (audioAlert) playBeep(1200, 0.3);
+      } else if (t < MIN_NORMAL_C) {
+        badge.className = 'status-badge warn';
+        badgeText.textContent = `Too Cold (< ${toDisp(MIN_NORMAL_C).toFixed(0)}°${unit})`;
+        diag.style.display = 'none';
       } else {
         badge.className = 'status-badge';
-        badgeText.textContent = 'Fridge Cold Enough';
+        badgeText.textContent = `Optimal Normal (2°–8°${unit})`;
         diag.style.display = 'none';
       }
+      $('statAvgSub').innerHTML = `Normal: ${toDisp(MIN_NORMAL_C).toFixed(0)}&ndash;${toDisp(MAX_NORMAL_C).toFixed(0)}&deg;${unit}`;
 
       // Meta info
       if (latest) {
@@ -1095,27 +1101,60 @@
           }
         },
         plugins: [{
-          id: 'warnLine',
+          id: 'normalRangeZone',
+          beforeDraw: chart => {
+            const yAxis = chart.scales.y;
+            const xAxis = chart.scales.x;
+            const minNorm = unit === 'F' ? 35.6 : 2.0;
+            const maxNorm = unit === 'F' ? 46.4 : 8.0;
+            const yTop = yAxis.getPixelForValue(maxNorm);
+            const yBottom = yAxis.getPixelForValue(minNorm);
+            const c = chart.ctx;
+            c.save();
+            c.fillStyle = isDark ? 'rgba(16, 185, 129, 0.08)' : 'rgba(5, 150, 105, 0.07)';
+            c.fillRect(xAxis.left, yTop, xAxis.width, yBottom - yTop);
+            c.restore();
+          },
           afterDraw: chart => {
             const yAxis = chart.scales.y;
             const xAxis = chart.scales.x;
-            const warnVal = unit === 'F' ? 46.4 : 8.0;
-            if (warnVal >= yAxis.min && warnVal <= yAxis.max) {
-              const y = yAxis.getPixelForValue(warnVal);
-              const c = chart.ctx;
-              c.save();
-              c.setLineDash([5, 5]);
-              c.strokeStyle = 'rgba(239, 68, 68, 0.7)';
-              c.lineWidth = 1.5;
-              c.beginPath();
-              c.moveTo(xAxis.left, y);
-              c.lineTo(xAxis.right, y);
-              c.stroke();
-              c.fillStyle = '#ef4444';
-              c.font = '10px "JetBrains Mono", monospace';
-              c.fillText(`8°C Warning`, xAxis.right - 70, y - 4);
-              c.restore();
-            }
+            const minNorm = unit === 'F' ? 35.6 : 2.0;
+            const maxNorm = unit === 'F' ? 46.4 : 8.0;
+            const yMax = yAxis.getPixelForValue(maxNorm);
+            const yMin = yAxis.getPixelForValue(minNorm);
+            const c = chart.ctx;
+            c.save();
+
+            // 8°C Upper Normal Limit Line
+            c.setLineDash([5, 5]);
+            c.strokeStyle = 'rgba(239, 68, 68, 0.75)';
+            c.lineWidth = 1.5;
+            c.beginPath();
+            c.moveTo(xAxis.left, yMax);
+            c.lineTo(xAxis.right, yMax);
+            c.stroke();
+            c.fillStyle = '#ef4444';
+            c.font = '10px "JetBrains Mono", monospace';
+            c.fillText(`8°C Max Limit`, xAxis.right - 85, yMax - 4);
+
+            // 2°C Lower Normal Limit Line
+            c.setLineDash([5, 5]);
+            c.strokeStyle = 'rgba(59, 130, 246, 0.7)';
+            c.lineWidth = 1.5;
+            c.beginPath();
+            c.moveTo(xAxis.left, yMin);
+            c.lineTo(xAxis.right, yMin);
+            c.stroke();
+            c.fillStyle = '#3b82f6';
+            c.font = '10px "JetBrains Mono", monospace';
+            c.fillText(`2°C Min Limit`, xAxis.right - 85, yMin + 12);
+
+            // Safe Zone Watermark
+            c.fillStyle = isDark ? 'rgba(16, 185, 129, 0.45)' : 'rgba(5, 150, 105, 0.5)';
+            c.font = '600 11px "Plus Jakarta Sans", sans-serif';
+            c.fillText(`✓ Safe Normal Zone (2°C – 8°C)`, xAxis.left + 8, (yMax + yMin) / 2 + 4);
+
+            c.restore();
           }
         }]
       });
@@ -1135,7 +1174,7 @@
         const d = new Date(r.created_at);
         const timeStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
         const tStr = r.temp_c !== null ? `${formatTemp(r.temp_c)} °${unit}` : '<span style="color:var(--warn)">Null</span>';
-        const st = r.temp_c === null ? '<span style="color:var(--warn)">Disconnected</span>' : (r.temp_c > WARN_TEMP_C ? '<span style="color:var(--bad)">Warm</span>' : '<span style="color:var(--ok)">Normal</span>');
+        const st = r.temp_c === null ? '<span style="color:var(--warn)">Disconnected</span>' : (r.temp_c > MAX_NORMAL_C ? '<span style="color:var(--bad)">Too Warm</span>' : (r.temp_c < MIN_NORMAL_C ? '<span style="color:var(--warn)">Too Cold</span>' : '<span style="color:var(--ok)">Normal</span>'));
         return `<tr><td>${timeStr}</td><td>${tStr}</td><td>${st}</td></tr>`;
       }).join('');
     }
