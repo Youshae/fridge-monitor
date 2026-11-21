@@ -1,6 +1,6 @@
 {
-  "name": "Fridge Cloud Monitor",
-  "short_name": "Fridge Cloud",
+  "name": "Temp Cloud Monitor",
+  "short_name": "Temp Cloud",
   "description": "Live fridge temperature monitoring dashboard",
   "start_url": "./",
   "scope": "./",
