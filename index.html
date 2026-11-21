@@ -1082,15 +1082,42 @@
               }
             },
             y: {
+              min: unit === 'F' ? 32 : 0,
+              max: unit === 'F' ? 86 : 30,
               grid: { color: gridColor },
               ticks: {
                 color: textColor,
                 font: { size: 10, family: 'JetBrains Mono' },
+                stepSize: unit === 'F' ? 10 : 5,
                 callback: v => `${v}°`
               }
             }
           }
-        }
+        },
+        plugins: [{
+          id: 'warnLine',
+          afterDraw: chart => {
+            const yAxis = chart.scales.y;
+            const xAxis = chart.scales.x;
+            const warnVal = unit === 'F' ? 46.4 : 8.0;
+            if (warnVal >= yAxis.min && warnVal <= yAxis.max) {
+              const y = yAxis.getPixelForValue(warnVal);
+              const c = chart.ctx;
+              c.save();
+              c.setLineDash([5, 5]);
+              c.strokeStyle = 'rgba(239, 68, 68, 0.7)';
+              c.lineWidth = 1.5;
+              c.beginPath();
+              c.moveTo(xAxis.left, y);
+              c.lineTo(xAxis.right, y);
+              c.stroke();
+              c.fillStyle = '#ef4444';
+              c.font = '10px "JetBrains Mono", monospace';
+              c.fillText(`8°C Warning`, xAxis.right - 70, y - 4);
+              c.restore();
+            }
+          }
+        }]
       });
     }
 
