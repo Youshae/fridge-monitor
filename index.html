@@ -2,149 +2,894 @@
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, maximum-scale=1, user-scalable=no">
   <meta name="apple-mobile-web-app-capable" content="yes">
-  <meta name="apple-mobile-web-app-title" content="Fridge Cloud">
-  <title>Fridge temperature (Cloud)</title>
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Fridge Guard">
+  <meta name="theme-color" content="#0d1b22">
+  <title>Fridge Temperature Cloud Monitor</title>
+
+  <!-- Google Font & Chart.js -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+
   <style>
-    :root{--bg:#eef3f5;--ink:#0f2a35;--mute:#5d7480;--line:#0a7d8c;--ok:#1d7a4d;--bad:#c23b4e;--grid:#d3dfe4;--btn:#dce8ec}
-    @media(prefers-color-scheme:dark){:root{--bg:#0b1a20;--ink:#e6f1f4;--mute:#8aa3ae;--line:#5ccfe0;--ok:#6fd49b;--bad:#ff7d8d;--grid:#1f343d;--btn:#16303a}}
-    *{box-sizing:border-box}
-    body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.4 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
-    padding:env(safe-area-inset-top) 18px env(safe-area-inset-bottom)}
-    main{max-width:720px;margin:0 auto;padding:28px 0}
-    h1{font-size:1rem;font-weight:500;color:var(--mute);margin:0}
-    .now{display:flex;align-items:baseline;gap:6px;margin:6px 0 4px}
-    #t{font-size:clamp(4.5rem,22vw,8rem);font-weight:300;letter-spacing:-.04em;font-variant-numeric:tabular-nums;line-height:1}
-    .u{font-size:1.8rem;color:var(--mute)}
-    #s{font-weight:600}
-    #s.ok{color:var(--ok)}#s.bad{color:var(--bad)}
-    .stats{display:flex;gap:28px;margin:22px 0;padding:14px 0;border-top:1px solid var(--grid);border-bottom:1px solid var(--grid)}
-    .stats b{display:block;font-size:1.4rem;font-weight:500;font-variant-numeric:tabular-nums}
-    .stats small{color:var(--mute)}
-    .tabs{display:flex;gap:8px;margin-bottom:10px;flex-wrap:wrap}
-    button{font:inherit;border:0;border-radius:8px;padding:7px 14px;background:var(--btn);color:var(--ink);cursor:pointer}
-    button[aria-pressed=true]{background:var(--line);color:var(--bg);font-weight:600}
-    canvas{width:100%;height:260px;display:block}
-    #u{color:var(--mute);font-size:.9rem;margin:10px 0 0}
+    :root {
+      --bg: #091318;
+      --card-bg: rgba(18, 32, 40, 0.75);
+      --card-border: rgba(92, 207, 224, 0.12);
+      --card-hover: rgba(28, 48, 59, 0.85);
+      --ink: #f0f7f9;
+      --ink-dim: #7f9ca8;
+      --primary: #00d2d3;
+      --primary-glow: rgba(0, 210, 211, 0.25);
+      --ok: #10b981;
+      --ok-glow: rgba(16, 185, 129, 0.2);
+      --warn: #f59e0b;
+      --bad: #ef4444;
+      --bad-glow: rgba(239, 68, 68, 0.25);
+      --chip-bg: rgba(255, 255, 255, 0.05);
+      --chip-active: #00d2d3;
+      --grid: rgba(255, 255, 255, 0.06);
+      --shadow: 0 10px 30px -5px rgba(0, 0, 0, 0.5);
+      --blur: blur(16px);
+      --radius: 18px;
+    }
+
+    [data-theme="light"] {
+      --bg: #edf3f6;
+      --card-bg: rgba(255, 255, 255, 0.85);
+      --card-border: rgba(0, 100, 120, 0.12);
+      --card-hover: rgba(255, 255, 255, 0.95);
+      --ink: #0d222b;
+      --ink-dim: #5c7480;
+      --primary: #0284c7;
+      --primary-glow: rgba(2, 132, 199, 0.18);
+      --ok: #059669;
+      --ok-glow: rgba(5, 150, 105, 0.15);
+      --warn: #d97706;
+      --bad: #dc2626;
+      --bad-glow: rgba(220, 38, 38, 0.15);
+      --chip-bg: rgba(0, 0, 0, 0.05);
+      --chip-active: #0284c7;
+      --grid: rgba(0, 0, 0, 0.06);
+      --shadow: 0 10px 30px -5px rgba(0, 60, 80, 0.08);
+    }
+
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+      min-height: 100vh;
+      padding: max(16px, env(safe-area-inset-top)) 16px max(24px, env(safe-area-inset-bottom));
+      transition: background 0.3s ease, color 0.3s ease;
+      background-image: radial-gradient(circle at 50% 0%, var(--primary-glow) 0%, transparent 60%);
+      background-repeat: no-repeat;
+      background-size: 100% 450px;
+    }
+
+    .app-container {
+      max-width: 760px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Top Bar */
+    header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 6px 0;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .brand-icon {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: linear-gradient(135deg, var(--primary), #3b82f6);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: #fff;
+      box-shadow: 0 4px 14px var(--primary-glow);
+    }
+
+    .brand h1 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin: 0;
+      letter-spacing: -0.02em;
+    }
+
+    .brand-sub {
+      font-size: 0.75rem;
+      color: var(--ink-dim);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .pulse-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: var(--ok);
+      box-shadow: 0 0 8px var(--ok);
+      animation: pulse 2s infinite;
+    }
+
+    @keyframes pulse {
+      0% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.4; transform: scale(0.85); }
+      100% { opacity: 1; transform: scale(1); }
+    }
+
+    .actions-bar {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+    }
+
+    .icon-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--ink);
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      backdrop-filter: var(--blur);
+      transition: all 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+    }
+
+    .icon-btn:active { transform: scale(0.92); }
+    .icon-btn.spinning svg { animation: spin 0.8s linear infinite; }
+
+    @keyframes spin { 100% { transform: rotate(360deg); } }
+
+    /* Hero Card */
+    .hero-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 24px 20px;
+      backdrop-filter: var(--blur);
+      box-shadow: var(--shadow);
+      position: relative;
+      overflow: hidden;
+      transition: all 0.3s ease;
+    }
+
+    .hero-card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--primary), var(--ok));
+      opacity: 0.8;
+    }
+
+    .hero-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 12px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 20px;
+      background: rgba(16, 185, 129, 0.12);
+      color: var(--ok);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+    }
+
+    .status-badge.bad {
+      background: rgba(239, 68, 68, 0.12);
+      color: var(--bad);
+      border-color: rgba(239, 68, 68, 0.25);
+    }
+
+    .status-badge.warn {
+      background: rgba(245, 158, 11, 0.12);
+      color: var(--warn);
+      border-color: rgba(245, 158, 11, 0.25);
+    }
+
+    .unit-switch {
+      display: flex;
+      background: var(--chip-bg);
+      border-radius: 10px;
+      padding: 3px;
+      border: 1px solid var(--card-border);
+    }
+
+    .unit-btn {
+      border: none;
+      background: transparent;
+      color: var(--ink-dim);
+      font-weight: 700;
+      font-size: 0.8rem;
+      padding: 4px 10px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .unit-btn.active {
+      background: var(--card-bg);
+      color: var(--ink);
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    .temp-display {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      margin: 8px 0 4px;
+    }
+
+    .temp-val {
+      font-size: clamp(4.5rem, 18vw, 6.8rem);
+      font-weight: 300;
+      letter-spacing: -0.05em;
+      line-height: 0.95;
+      font-family: 'JetBrains Mono', monospace;
+      color: var(--ink);
+    }
+
+    .temp-unit {
+      font-size: clamp(2rem, 8vw, 3rem);
+      font-weight: 400;
+      color: var(--ink-dim);
+    }
+
+    .temp-meta {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 14px;
+      font-size: 0.84rem;
+      color: var(--ink-dim);
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .trend-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      font-weight: 600;
+    }
+
+    /* Interactive Stats Grid */
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+    }
+
+    .stat-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 14px 12px;
+      backdrop-filter: var(--blur);
+      transition: transform 0.2s, background 0.2s;
+    }
+
+    .stat-card:hover { background: var(--card-hover); }
+
+    .stat-label {
+      font-size: 0.72rem;
+      text-transform: uppercase;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      color: var(--ink-dim);
+      display: flex;
+      align-items: center;
+      gap: 5px;
+    }
+
+    .stat-val {
+      font-size: 1.45rem;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      margin: 4px 0 2px;
+      color: var(--ink);
+    }
+
+    .stat-sub {
+      font-size: 0.7rem;
+      color: var(--ink-dim);
+    }
+
+    /* Chart Section */
+    .chart-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: var(--radius);
+      padding: 20px 18px 16px;
+      backdrop-filter: var(--blur);
+      box-shadow: var(--shadow);
+    }
+
+    .chart-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+
+    .chart-title {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--ink);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .time-tabs {
+      display: flex;
+      background: var(--chip-bg);
+      padding: 3px;
+      border-radius: 10px;
+      gap: 2px;
+      border: 1px solid var(--card-border);
+    }
+
+    .tab-btn {
+      border: none;
+      background: transparent;
+      color: var(--ink-dim);
+      font-size: 0.78rem;
+      font-weight: 600;
+      padding: 6px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+    }
+
+    .tab-btn.active {
+      background: var(--primary);
+      color: #000;
+      font-weight: 700;
+      box-shadow: 0 2px 8px var(--primary-glow);
+    }
+
+    .chart-wrapper {
+      position: relative;
+      height: 270px;
+      width: 100%;
+    }
+
+    .chart-scrub-info {
+      font-size: 0.78rem;
+      color: var(--ink-dim);
+      text-align: center;
+      margin-top: 10px;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 6px;
+    }
+
+    /* Diagnostics Banner */
+    .diag-banner {
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: 14px;
+      padding: 14px 16px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .diag-title {
+      font-size: 0.85rem;
+      font-weight: 700;
+      color: var(--warn);
+      display: flex;
+      align-items: center;
+      gap: 7px;
+    }
+
+    .diag-desc {
+      font-size: 0.8rem;
+      line-height: 1.45;
+      color: var(--ink-dim);
+      margin: 0;
+    }
+
+    /* Controls Bar */
+    .quick-bar {
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .action-pill {
+      flex: 1;
+      min-width: 140px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      color: var(--ink);
+      font-size: 0.82rem;
+      font-weight: 600;
+      padding: 12px;
+      border-radius: 12px;
+      cursor: pointer;
+      backdrop-filter: var(--blur);
+      transition: all 0.2s;
+    }
+
+    .action-pill:active { transform: scale(0.97); }
+
+    .action-pill.active-pill {
+      border-color: var(--primary);
+      background: rgba(0, 210, 211, 0.1);
+      color: var(--primary);
+    }
+
+    /* Table Modal / Drawer */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(8px);
+      z-index: 999;
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.25s ease;
+    }
+
+    .modal-overlay.open {
+      display: flex;
+      opacity: 1;
+    }
+
+    .modal-sheet {
+      background: var(--bg);
+      border: 1px solid var(--card-border);
+      border-radius: 24px 24px 0 0;
+      width: 100%;
+      max-width: 760px;
+      max-height: 82vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 -10px 40px rgba(0, 0, 0, 0.5);
+      animation: slideUp 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    @keyframes slideUp {
+      from { transform: translateY(100%); }
+      to { transform: translateY(0); }
+    }
+
+    .modal-header {
+      padding: 18px 20px 14px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      border-bottom: 1px solid var(--card-border);
+    }
+
+    .modal-header h3 {
+      margin: 0;
+      font-size: 1.1rem;
+      font-weight: 700;
+    }
+
+    .table-scroll {
+      padding: 0 16px 24px;
+      overflow-y: auto;
+      flex: 1;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.85rem;
+      margin-top: 10px;
+    }
+
+    th {
+      text-align: left;
+      padding: 10px 8px;
+      color: var(--ink-dim);
+      font-weight: 600;
+      border-bottom: 1px solid var(--card-border);
+      position: sticky;
+      top: 0;
+      background: var(--bg);
+    }
+
+    td {
+      padding: 10px 8px;
+      border-bottom: 1px solid var(--grid);
+      font-family: 'JetBrains Mono', monospace;
+    }
+
+    footer {
+      text-align: center;
+      font-size: 0.75rem;
+      color: var(--ink-dim);
+      padding: 12px 0 4px;
+    }
   </style>
 </head>
 <body>
-  <main>
-    <h1>Fridge temperature &middot; Cloud</h1>
-    <div class="now"><span id="t">--</span><span class="u">&deg;C</span></div>
-    <div id="s">Connecting</div>
-    <div class="stats">
-      <div><b id="min">--</b><small>lowest</small></div>
-      <div><b id="avg">--</b><small>average</small></div>
-      <div><b id="max">--</b><small>highest</small></div>
+
+  <div class="app-container">
+
+    <!-- Top Navigation Header -->
+    <header>
+      <div class="brand">
+        <div class="brand-icon">
+          <!-- Snowflake / Thermometer SVG -->
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M14 14.76V3.5a2.5 2.5 0 0 0-5 0v11.26a4.5 4.5 0 1 0 5 0z"/>
+          </svg>
+        </div>
+        <div>
+          <h1>Fridge Cloud</h1>
+          <div class="brand-sub">
+            <span class="pulse-dot" id="liveDot"></span>
+            <span id="connLabel">Connecting...</span>
+          </div>
+        </div>
+      </div>
+
+      <div class="actions-bar">
+        <!-- Theme Toggle -->
+        <button class="icon-btn" id="themeBtn" title="Toggle Theme" aria-label="Toggle Theme">
+          <svg id="themeIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>
+          </svg>
+        </button>
+
+        <!-- Sound Alert Toggle -->
+        <button class="icon-btn" id="audioBtn" title="Toggle Alarm Sound" aria-label="Toggle Alarm Sound">
+          <svg id="audioIcon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M11 5L6 9H2v6h4l5 4V5z"/>
+            <line x1="23" y1="9" x2="17" y2="15"/>
+            <line x1="17" y1="9" x2="23" y2="15"/>
+          </svg>
+        </button>
+
+        <!-- Instant Refresh -->
+        <button class="icon-btn" id="refreshBtn" title="Refresh Now" aria-label="Refresh Now">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/>
+            <path d="M3 3v5h5"/>
+            <path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/>
+            <path d="M16 21h5v-5"/>
+          </svg>
+        </button>
+      </div>
+    </header>
+
+    <!-- Main Temperature Hero Card -->
+    <section class="hero-card">
+      <div class="hero-top">
+        <div class="status-badge" id="statusBadge">
+          <span id="badgeText">Connecting...</span>
+        </div>
+
+        <div class="unit-switch">
+          <button class="unit-btn active" id="btnC">&deg;C</button>
+          <button class="unit-btn" id="btnF">&deg;F</button>
+        </div>
+      </div>
+
+      <div class="temp-display">
+        <span class="temp-val" id="tempVal">--</span>
+        <span class="temp-unit" id="tempUnit">&deg;C</span>
+      </div>
+
+      <div class="temp-meta">
+        <span class="trend-indicator" id="trendText">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14"/></svg>
+          Checking trend...
+        </span>
+        <span id="lastSeenText">Syncing cloud...</span>
+      </div>
+    </section>
+
+    <!-- Interactive Stats (Min / Avg / Max) -->
+    <section class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 5v14M5 12l7 7 7-7"/></svg>
+          Lowest
+        </div>
+        <div class="stat-val" id="statMin">--</div>
+        <div class="stat-sub" id="statMinTime">In selected range</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M4 12h16"/></svg>
+          Average
+        </div>
+        <div class="stat-val" id="statAvg">--</div>
+        <div class="stat-sub">Normal: 2&ndash;5&deg;C</div>
+      </div>
+
+      <div class="stat-card">
+        <div class="stat-label">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+          Highest
+        </div>
+        <div class="stat-val" id="statMax">--</div>
+        <div class="stat-sub" id="statMaxTime">Warning: &gt;8&deg;C</div>
+      </div>
+    </section>
+
+    <!-- Interactive Chart -->
+    <section class="chart-card">
+      <div class="chart-header">
+        <div class="chart-title">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+          Temperature Curve
+        </div>
+
+        <div class="time-tabs" id="timeTabs">
+          <button class="tab-btn" data-h="1">1h</button>
+          <button class="tab-btn active" data-h="6">6h</button>
+          <button class="tab-btn" data-h="24">24h</button>
+          <button class="tab-btn" data-h="168">7d</button>
+        </div>
+      </div>
+
+      <div class="chart-wrapper">
+        <canvas id="tempChart"></canvas>
+      </div>
+
+      <div class="chart-scrub-info">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        <span>Touch or hover across the curve to inspect exact temperature &amp; time</span>
+      </div>
+    </section>
+
+    <!-- Diagnostic Banner (Auto shown if probe reads null) -->
+    <div class="diag-banner" id="diagBanner" style="display:none;">
+      <div class="diag-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        ESP32 Probe Disconnected
+      </div>
+      <p class="diag-desc">
+        The ESP32 is actively uploading, but the thermistor probe returned voltage out of range (&lt;0.15V or &gt;3.1V). Check ADC pin 32 and the 10k&Omega; resistor to GND.
+      </p>
     </div>
-    <div class="tabs" id="tabs">
-      <button data-h="1" aria-pressed="false">1 hour</button>
-      <button data-h="6" aria-pressed="true">6 hours</button>
-      <button data-h="24" aria-pressed="false">24 hours</button>
-      <button data-h="168" aria-pressed="false">7 days</button>
+
+    <!-- Quick Action Bar -->
+    <section class="quick-bar">
+      <!-- Toggle Demo Data -->
+      <button class="action-pill" id="demoToggleBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+        <span id="demoBtnLabel">Simulate Demo Data</span>
+      </button>
+
+      <!-- View Raw Table Logs -->
+      <button class="action-pill" id="viewTableBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18"/></svg>
+        View Log Table
+      </button>
+
+      <!-- Export CSV -->
+      <button class="action-pill" id="exportCsvBtn">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        Export CSV
+      </button>
+    </section>
+
+    <footer>
+      Auto-syncing every 15s &bull; Supabase REST &bull; Fridge Cloud Monitor
+    </footer>
+  </div>
+
+  <!-- Raw Log Drawer Modal -->
+  <div class="modal-overlay" id="modalOverlay">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h3>Recent Reading Logs</h3>
+        <button class="icon-btn" id="closeModalBtn">&times;</button>
+      </div>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Temperature</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody id="logTableBody">
+            <tr><td colspan="3" style="text-align:center;color:var(--ink-dim)">Loading...</td></tr>
+          </tbody>
+        </table>
+      </div>
     </div>
-    <canvas id="c" role="img" aria-label="Temperature graph"></canvas>
-    <p id="u"></p>
-  </main>
+  </div>
 
   <script>
     const SUPABASE_URL = "https://sippspvglqqemotxgsxl.supabase.co";
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpcHBzcHZnbHFxZW1vdHhnc3hsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUyNzk4MTcsImV4cCI6MjExMDg1NTgxN30.Z54wC47W6N2roQfKQvAA1uL5z6VQBjX3a53beNQ-l4w";
-    const WARN = 8;
+    const WARN_TEMP_C = 8.0;
     const STALE_MINUTES = 5;
 
     const $ = id => document.getElementById(id);
-    const css = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
-    let rows = [], hrs = 6, err = false;
 
-    function render() {
-      const s = $('s');
-      const latest = rows.length ? rows[rows.length - 1] : null;
-      const t = latest ? latest.temp_c : null;
-      const ageMin = latest ? (Date.now() - new Date(latest.created_at).getTime()) / 60000 : Infinity;
+    // State
+    let unit = localStorage.getItem('fg_unit') || 'C';
+    let hrs = 6;
+    let theme = localStorage.getItem('fg_theme') || 'dark';
+    let audioAlert = localStorage.getItem('fg_audio') === 'true';
+    let demoMode = localStorage.getItem('fg_demo') === 'true';
+    let rawRows = [];
+    let chartInstance = null;
+    let audioCtx = null;
 
-      $('t').textContent = (t === null || err) ? '--' : t.toFixed(1);
+    // Unit conversion
+    const toDisp = c => {
+      if (c === null || isNaN(c)) return null;
+      return unit === 'F' ? (c * 9/5 + 32) : c;
+    };
+    const formatTemp = c => {
+      const v = toDisp(c);
+      return v === null ? '--' : v.toFixed(1);
+    };
 
-      if (err) {
-        s.textContent = 'Cannot reach cloud database';
-        s.className = 'bad';
-      } else if (!latest) {
-        s.textContent = 'No readings logged yet';
-        s.className = 'bad';
-      } else if (ageMin > STALE_MINUTES) {
-        s.textContent = `ESP32 offline (last seen ${Math.round(ageMin)}m ago)`;
-        s.className = 'bad';
-      } else if (t === null) {
-        s.textContent = 'No sensor reading, check probe wiring';
-        s.className = 'bad';
-      } else if (t > WARN) {
-        s.textContent = 'Too warm';
-        s.className = 'bad';
-      } else {
-        s.textContent = 'Fridge is cold enough';
-        s.className = 'ok';
-      }
+    // Apply Theme
+    function applyTheme() {
+      document.documentElement.setAttribute('data-theme', theme);
+      $('themeIcon').innerHTML = theme === 'dark' 
+        ? '<path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/>'
+        : '<circle cx="12" cy="12" r="5"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/>';
+      if (chartInstance) renderChart(rawRows);
+    }
+    applyTheme();
 
-      const valid = rows.map(r => r.temp_c).filter(v => v !== null);
-      $('min').textContent = valid.length ? Math.min(...valid).toFixed(1) : '--';
-      $('max').textContent = valid.length ? Math.max(...valid).toFixed(1) : '--';
-      $('avg').textContent = valid.length ? (valid.reduce((a, b) => a + b, 0) / valid.length).toFixed(1) : '--';
-      draw(rows, valid);
+    $('themeBtn').addEventListener('click', () => {
+      theme = theme === 'dark' ? 'light' : 'dark';
+      localStorage.setItem('fg_theme', theme);
+      applyTheme();
+    });
+
+    // Sound alert toggle
+    function updateAudioIcon() {
+      $('audioIcon').innerHTML = audioAlert 
+        ? '<polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/>'
+        : '<path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/>';
+    }
+    updateAudioIcon();
+
+    $('audioBtn').addEventListener('click', () => {
+      audioAlert = !audioAlert;
+      localStorage.setItem('fg_audio', audioAlert);
+      updateAudioIcon();
+      if (audioAlert) playBeep(880, 0.1);
+    });
+
+    function playBeep(freq = 880, dur = 0.15) {
+      try {
+        if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (audioCtx.state === 'suspended') audioCtx.resume();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(0.1, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + dur);
+      } catch (e) {}
     }
 
-    function draw(data, valid) {
-      const c = $('c'), r = devicePixelRatio || 1, w = c.clientWidth, h = c.clientHeight;
-      c.width = w * r; c.height = h * r;
-      const g = c.getContext('2d');
-      g.scale(r, r); g.font = '12px system-ui'; g.fillStyle = css('--mute');
+    // Unit toggle
+    $('btnC').addEventListener('click', () => setUnit('C'));
+    $('btnF').addEventListener('click', () => setUnit('F'));
 
-      if (valid.length < 2) {
-        g.fillText('Waiting for at least 2 logged readings in this window.', 4, h / 2);
+    function setUnit(u) {
+      unit = u;
+      localStorage.setItem('fg_unit', u);
+      $('btnC').classList.toggle('active', u === 'C');
+      $('btnF').classList.toggle('active', u === 'F');
+      $('tempUnit').innerHTML = u === 'C' ? '&deg;C' : '&deg;F';
+      updateUI();
+    }
+    if (unit === 'F') setUnit('F');
+
+    // Demo Mode Generator
+    function generateDemoData() {
+      const rows = [];
+      const now = Date.now();
+      const count = hrs * 60;
+      for (let i = count; i >= 0; i--) {
+        const time = new Date(now - i * 60 * 1000).toISOString();
+        // Simulate compressor cycle: oscillating between 2.2C and 5.5C with slight noise
+        const cycle = Math.sin((count - i) / 25) * 1.8 + 3.8;
+        const temp = parseFloat((cycle + (Math.random() * 0.4 - 0.2)).toFixed(1));
+        rows.push({ created_at: time, temp_c: temp });
+      }
+      return rows;
+    }
+
+    // Toggle Demo Button
+    const demoBtn = $('demoToggleBtn');
+    function updateDemoButton() {
+      demoBtn.classList.toggle('active-pill', demoMode);
+      $('demoBtnLabel').textContent = demoMode ? 'Exit Demo (Use Live)' : 'Simulate Demo Data';
+    }
+    updateDemoButton();
+
+    demoBtn.addEventListener('click', () => {
+      demoMode = !demoMode;
+      localStorage.setItem('fg_demo', demoMode);
+      updateDemoButton();
+      poll();
+    });
+
+    // Time Tabs
+    document.querySelectorAll('#timeTabs button').forEach(b => {
+      b.addEventListener('click', () => {
+        hrs = +b.dataset.h;
+        document.querySelectorAll('#timeTabs button').forEach(x => x.classList.toggle('active', x === b));
+        poll();
+      });
+    });
+
+    // Manual Refresh
+    $('refreshBtn').addEventListener('click', () => {
+      $('refreshBtn').classList.add('spinning');
+      if (navigator.vibrate) navigator.vibrate(30);
+      poll().then(() => setTimeout(() => $('refreshBtn').classList.remove('spinning'), 500));
+    });
+
+    // Poll Supabase or Demo
+    async function poll() {
+      if (demoMode) {
+        rawRows = generateDemoData();
+        updateUI();
+        $('connLabel').textContent = 'Demo Mode (Simulated)';
+        $('liveDot').style.background = 'var(--primary)';
         return;
       }
 
-      const lo = Math.floor(Math.min(...valid, WARN) - 1);
-      const hi = Math.ceil(Math.max(...valid, WARN) + 1);
-      const L = 30, B = 20, T = 6, R = 4, pw = w - L - R, ph = h - T - B;
-      const tMin = new Date(data[0].created_at).getTime();
-      const tMax = new Date(data[data.length - 1].created_at).getTime();
-      const span = Math.max(tMax - tMin, 1);
-
-      const X = ts => L + pw * (new Date(ts).getTime() - tMin) / span;
-      const Y = y => T + ph * (1 - (y - lo) / (hi - lo));
-
-      g.lineWidth = 1; g.strokeStyle = css('--grid');
-      for (let k = 0; k <= 4; k++) {
-        const y = lo + (hi - lo) * k / 4;
-        g.beginPath(); g.moveTo(L, Y(y)); g.lineTo(w - R, Y(y)); g.stroke();
-        g.fillText(y.toFixed(0), 2, Y(y) + 4);
-      }
-
-      g.setLineDash([5, 5]); g.strokeStyle = css('--bad');
-      g.beginPath(); g.moveTo(L, Y(WARN)); g.lineTo(w - R, Y(WARN)); g.stroke();
-      g.setLineDash([]);
-
-      g.strokeStyle = css('--line'); g.lineWidth = 2; g.lineJoin = 'round';
-      g.beginPath();
-      let pen = false;
-      data.forEach(row => {
-        if (row.temp_c === null) { pen = false; return; }
-        pen ? g.lineTo(X(row.created_at), Y(row.temp_c)) : g.moveTo(X(row.created_at), Y(row.temp_c));
-        pen = true;
-      });
-      g.stroke();
-
-      g.fillStyle = css('--mute');
-      const label = hrs >= 24 ? (hrs / 24) + 'd ago' : hrs + 'h ago';
-      g.fillText(label, L, h - 5);
-      g.fillText('now', w - R - 24, h - 5);
-    }
-
-    async function poll() {
       const since = new Date(Date.now() - hrs * 3600 * 1000).toISOString();
       const url = `${SUPABASE_URL}/rest/v1/fridge_readings?select=created_at,temp_c&created_at=gte.${encodeURIComponent(since)}&order=created_at.asc&limit=10080`;
+
       try {
         const res = await fetch(url, {
           headers: {
@@ -153,26 +898,249 @@
           }
         });
         if (!res.ok) throw new Error(res.status);
-        rows = await res.json();
-        err = false;
-        const lastTs = rows.length ? new Date(rows[rows.length - 1].created_at).toLocaleTimeString() : 'never';
-        $('u').textContent = `Synced ${new Date().toLocaleTimeString()} · Last reading: ${lastTs}`;
-      } catch (e) {
-        err = true;
-        $('u').textContent = 'Cloud sync failed, retrying in 15s';
+        rawRows = await res.json();
+
+        $('connLabel').textContent = `Cloud Live (${rawRows.length} readings)`;
+        $('liveDot').style.background = 'var(--ok)';
+        updateUI();
+      } catch (err) {
+        $('connLabel').textContent = 'Cloud Disconnected';
+        $('liveDot').style.background = 'var(--bad)';
+        $('statusBadge').className = 'status-badge bad';
+        $('badgeText').textContent = 'Database unreachable';
       }
-      render();
     }
 
-    $('tabs').addEventListener('click', e => {
-      const b = e.target.closest('button');
-      if (!b) return;
-      hrs = +b.dataset.h;
-      document.querySelectorAll('#tabs button').forEach(x => x.setAttribute('aria-pressed', x === b));
-      poll();
+    // Main UI Update
+    function updateUI() {
+      const latest = rawRows.length ? rawRows[rawRows.length - 1] : null;
+      const t = latest ? latest.temp_c : null;
+      const ageMin = latest ? (Date.now() - new Date(latest.created_at).getTime()) / 60000 : Infinity;
+
+      $('tempVal').textContent = formatTemp(t);
+
+      // Status badge and alerts
+      const badge = $('statusBadge');
+      const badgeText = $('badgeText');
+      const diag = $('diagBanner');
+
+      if (!latest) {
+        badge.className = 'status-badge bad';
+        badgeText.textContent = 'No readings yet';
+        diag.style.display = 'none';
+      } else if (ageMin > STALE_MINUTES) {
+        badge.className = 'status-badge bad';
+        badgeText.textContent = `ESP32 Offline (${Math.round(ageMin)}m ago)`;
+        diag.style.display = 'none';
+      } else if (t === null) {
+        badge.className = 'status-badge warn';
+        badgeText.textContent = 'Probe Disconnected';
+        diag.style.display = 'flex';
+      } else if (t > WARN_TEMP_C) {
+        badge.className = 'status-badge bad';
+        badgeText.textContent = `Too Warm (> ${toDisp(WARN_TEMP_C).toFixed(0)}°${unit})`;
+        diag.style.display = 'none';
+        if (audioAlert) playBeep(1200, 0.3);
+      } else {
+        badge.className = 'status-badge';
+        badgeText.textContent = 'Fridge Cold Enough';
+        diag.style.display = 'none';
+      }
+
+      // Meta info
+      if (latest) {
+        const d = new Date(latest.created_at);
+        $('lastSeenText').textContent = `Last reading: ${d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}`;
+      }
+
+      // Calculate Stats (filtering nulls)
+      const validRows = rawRows.filter(r => r.temp_c !== null && !isNaN(r.temp_c));
+      if (validRows.length > 0) {
+        let minR = validRows[0], maxR = validRows[0], sum = 0;
+        validRows.forEach(r => {
+          if (r.temp_c < minR.temp_c) minR = r;
+          if (r.temp_c > maxR.temp_c) maxR = r;
+          sum += r.temp_c;
+        });
+
+        $('statMin').textContent = `${formatTemp(minR.temp_c)}°`;
+        $('statMinTime').textContent = `at ${new Date(minR.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+        $('statMax').textContent = `${formatTemp(maxR.temp_c)}°`;
+        $('statMaxTime').textContent = `at ${new Date(maxR.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+
+        const avg = sum / validRows.length;
+        $('statAvg').textContent = `${formatTemp(avg)}°`;
+
+        // Trend calculation (last 15m vs prior)
+        if (validRows.length >= 4) {
+          const firstRecent = validRows[Math.max(0, validRows.length - 10)].temp_c;
+          const lastRecent = validRows[validRows.length - 1].temp_c;
+          const diff = lastRecent - firstRecent;
+          if (Math.abs(diff) < 0.2) {
+            $('trendText').innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M5 12h14"/></svg> Stable (&plusmn;0.1&deg;)`;
+            $('trendText').style.color = 'var(--ink-dim)';
+          } else if (diff > 0) {
+            $('trendText').innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m18 9-6-6-6 6M12 3v14"/></svg> Warming (+${diff.toFixed(1)}&deg;)`;
+            $('trendText').style.color = 'var(--bad)';
+          } else {
+            $('trendText').innerHTML = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m6 15 6 6 6-6M12 21V7"/></svg> Cooling (${diff.toFixed(1)}&deg;)`;
+            $('trendText').style.color = 'var(--primary)';
+          }
+        }
+      } else {
+        $('statMin').textContent = '--';
+        $('statAvg').textContent = '--';
+        $('statMax').textContent = '--';
+        $('statMinTime').textContent = 'No sensor readings';
+        $('statMaxTime').textContent = 'Check probe';
+      }
+
+      renderChart(rawRows);
+      renderTableModal(rawRows);
+    }
+
+    // Chart.js Rendering
+    function renderChart(data) {
+      const ctx = $('tempChart').getContext('2d');
+      const valid = data.filter(d => d.temp_c !== null);
+
+      const labels = data.map(d => {
+        const date = new Date(d.created_at);
+        return hrs > 24 
+          ? `${date.getMonth()+1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
+          : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      });
+
+      const values = data.map(d => toDisp(d.temp_c));
+
+      const isDark = theme === 'dark';
+      const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
+      const textColor = isDark ? '#7f9ca8' : '#5c7480';
+      const lineColor = '#00d2d3';
+
+      const gradient = ctx.createLinearGradient(0, 0, 0, 260);
+      gradient.addColorStop(0, isDark ? 'rgba(0, 210, 211, 0.35)' : 'rgba(2, 132, 199, 0.25)');
+      gradient.addColorStop(1, 'rgba(0, 210, 211, 0.0)');
+
+      if (chartInstance) chartInstance.destroy();
+
+      chartInstance = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: labels,
+          datasets: [{
+            label: `Temperature (°${unit})`,
+            data: values,
+            borderColor: lineColor,
+            borderWidth: 2.5,
+            fill: true,
+            backgroundColor: gradient,
+            tension: 0.3,
+            pointRadius: data.length > 60 ? 0 : 3,
+            pointHoverRadius: 6,
+            pointHoverBackgroundColor: '#fff',
+            pointHoverBorderColor: lineColor,
+            pointHoverBorderWidth: 3,
+            spanGaps: false
+          }]
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          interaction: {
+            mode: 'index',
+            intersect: false,
+          },
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: isDark ? 'rgba(18, 32, 40, 0.95)' : 'rgba(255, 255, 255, 0.95)',
+              titleColor: isDark ? '#f0f7f9' : '#0d222b',
+              bodyColor: isDark ? '#00d2d3' : '#0284c7',
+              borderColor: isDark ? 'rgba(92, 207, 224, 0.2)' : 'rgba(0, 100, 120, 0.2)',
+              borderWidth: 1,
+              padding: 10,
+              boxPadding: 4,
+              displayColors: false,
+              callbacks: {
+                label: context => {
+                  const val = context.parsed.y;
+                  return val === null ? 'No sensor reading' : ` ${val.toFixed(1)} °${unit}`;
+                }
+              }
+            }
+          },
+          scales: {
+            x: {
+              grid: { color: gridColor },
+              ticks: {
+                color: textColor,
+                font: { size: 10, family: 'JetBrains Mono' },
+                maxTicksLimit: 6,
+                maxRotation: 0
+              }
+            },
+            y: {
+              grid: { color: gridColor },
+              ticks: {
+                color: textColor,
+                font: { size: 10, family: 'JetBrains Mono' },
+                callback: v => `${v}°`
+              }
+            }
+          }
+        }
+      });
+    }
+
+    // Modal Logs Table
+    function renderTableModal(data) {
+      const tbody = $('logTableBody');
+      const recent = [...data].reverse().slice(0, 50);
+
+      if (recent.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="3" style="text-align:center;color:var(--ink-dim)">No readings recorded</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = recent.map(r => {
+        const d = new Date(r.created_at);
+        const timeStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+        const tStr = r.temp_c !== null ? `${formatTemp(r.temp_c)} °${unit}` : '<span style="color:var(--warn)">Null</span>';
+        const st = r.temp_c === null ? '<span style="color:var(--warn)">Disconnected</span>' : (r.temp_c > WARN_TEMP_C ? '<span style="color:var(--bad)">Warm</span>' : '<span style="color:var(--ok)">Normal</span>');
+        return `<tr><td>${timeStr}</td><td>${tStr}</td><td>${st}</td></tr>`;
+      }).join('');
+    }
+
+    $('viewTableBtn').addEventListener('click', () => {
+      $('modalOverlay').classList.add('open');
+    });
+    $('closeModalBtn').addEventListener('click', () => {
+      $('modalOverlay').classList.remove('open');
+    });
+    $('modalOverlay').addEventListener('click', e => {
+      if (e.target === $('modalOverlay')) $('modalOverlay').classList.remove('open');
     });
 
-    addEventListener('resize', render);
+    // Export CSV
+    $('exportCsvBtn').addEventListener('click', () => {
+      if (!rawRows.length) return alert('No data available to export.');
+      let csv = "created_at,temp_c,temp_f\n";
+      rawRows.forEach(r => {
+        const f = r.temp_c !== null ? (r.temp_c * 9/5 + 32).toFixed(2) : "";
+        csv += `"${r.created_at}",${r.temp_c !== null ? r.temp_c.toFixed(2) : ""},${f}\n`;
+      });
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `fridge_data_${new Date().toISOString().slice(0,10)}.csv`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    // Start
     poll();
     setInterval(poll, 15000);
   </script>
