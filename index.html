@@ -723,7 +723,7 @@
     </section>
 
     <footer>
-      Auto-syncing every 15s &bull; Supabase REST &bull; Temp Cloud Monitor
+      Auto-syncing every 5s &bull; Supabase REST &bull; Temp Cloud Monitor
     </footer>
   </div>
 
@@ -756,7 +756,7 @@
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpcHBzcHZnbHFxZW1vdHhnc3hsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUyNzk4MTcsImV4cCI6MjExMDg1NTgxN30.Z54wC47W6N2roQfKQvAA1uL5z6VQBjX3a53beNQ-l4w";
     const MIN_NORMAL_C = 2.0;
     const MAX_NORMAL_C = 8.0;
-    const STALE_MINUTES = 5;
+    const STALE_SECONDS = 35;
 
     const $ = id => document.getElementById(id);
 
@@ -925,7 +925,7 @@
     function updateUI() {
       const latest = rawRows.length ? rawRows[rawRows.length - 1] : null;
       const t = latest ? latest.temp_c : null;
-      const ageMin = latest ? (Date.now() - new Date(latest.created_at).getTime()) / 60000 : Infinity;
+      const ageSec = latest ? (Date.now() - new Date(latest.created_at).getTime()) / 1000 : Infinity;
 
       $('tempVal').textContent = formatTemp(t);
 
@@ -938,9 +938,10 @@
         badge.className = 'status-badge bad';
         badgeText.textContent = 'No readings yet';
         diag.style.display = 'none';
-      } else if (ageMin > STALE_MINUTES) {
+      } else if (ageSec > STALE_SECONDS) {
         badge.className = 'status-badge bad';
-        badgeText.textContent = `ESP32 Offline (${Math.round(ageMin)}m ago)`;
+        const ago = ageSec > 60 ? `${Math.round(ageSec / 60)}m ago` : `${Math.round(ageSec)}s ago`;
+        badgeText.textContent = `ESP32 Offline (${ago})`;
         diag.style.display = 'none';
       } else if (t === null) {
         badge.className = 'status-badge warn';
@@ -1217,7 +1218,7 @@
 
     // Start
     poll();
-    setInterval(poll, 15000);
+    setInterval(poll, 5000);
   </script>
 </body>
 </html>
