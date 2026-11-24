@@ -1092,7 +1092,34 @@
       gradient.addColorStop(0, isDark ? 'rgba(0, 210, 211, 0.35)' : 'rgba(2, 132, 199, 0.25)');
       gradient.addColorStop(1, 'rgba(0, 210, 211, 0.0)');
 
-      if (chartInstance) chartInstance.destroy();
+      if (chartInstance) {
+        chartInstance.data.labels = labels;
+        const ds = chartInstance.data.datasets[0];
+        ds.label = `Temperature (°${unit})`;
+        ds.data = values;
+        ds.backgroundColor = gradient;
+        ds.pointRadius = data.length > 60 ? 0 : 3;
+
+        const tt = chartInstance.options.plugins.tooltip;
+        tt.backgroundColor = isDark ? 'rgba(18, 32, 40, 0.95)' : 'rgba(255, 255, 255, 0.95)';
+        tt.titleColor = isDark ? '#f0f7f9' : '#0d222b';
+        tt.bodyColor = isDark ? '#00d2d3' : '#0284c7';
+        tt.borderColor = isDark ? 'rgba(92, 207, 224, 0.2)' : 'rgba(0, 100, 120, 0.2)';
+
+        const sx = chartInstance.options.scales.x;
+        sx.grid.color = gridColor;
+        sx.ticks.color = textColor;
+
+        const sy = chartInstance.options.scales.y;
+        sy.min = unit === 'F' ? 32 : 0;
+        sy.max = unit === 'F' ? 86 : 30;
+        sy.grid.color = gridColor;
+        sy.ticks.color = textColor;
+        sy.ticks.stepSize = unit === 'F' ? 10 : 5;
+
+        chartInstance.update('none');
+        return;
+      }
 
       chartInstance = new Chart(ctx, {
         type: 'line',
@@ -1174,7 +1201,7 @@
             const yBottom = yAxis.getPixelForValue(minNorm);
             const c = chart.ctx;
             c.save();
-            c.fillStyle = isDark ? 'rgba(16, 185, 129, 0.08)' : 'rgba(5, 150, 105, 0.07)';
+            c.fillStyle = (theme === 'dark') ? 'rgba(16, 185, 129, 0.08)' : 'rgba(5, 150, 105, 0.07)';
             c.fillRect(xAxis.left, yTop, xAxis.width, yBottom - yTop);
             c.restore();
           },
@@ -1213,7 +1240,7 @@
             c.fillText(`2°C Min Limit`, xAxis.right - 85, yMin + 12);
 
             // Safe Zone Watermark
-            c.fillStyle = isDark ? 'rgba(16, 185, 129, 0.45)' : 'rgba(5, 150, 105, 0.5)';
+            c.fillStyle = (theme === 'dark') ? 'rgba(16, 185, 129, 0.45)' : 'rgba(5, 150, 105, 0.5)';
             c.font = '600 11px "Plus Jakarta Sans", sans-serif';
             c.fillText(`✓ Safe Normal Zone (2°C – 8°C)`, xAxis.left + 8, (yMax + yMin) / 2 + 4);
 
