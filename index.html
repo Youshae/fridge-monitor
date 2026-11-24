@@ -872,9 +872,8 @@
             lastKnownTimestamp = point.created_at;
             if (!rawRows.length || rawRows[rawRows.length - 1].created_at !== point.created_at) {
               rawRows.push(point);
-              if (rawRows.length > 1000) rawRows.shift();
             }
-            $('connLabel').textContent = `Cloud Live (${rawRows.length} readings)`;
+            $('connLabel').textContent = `Cloud Live (${rawRows.length.toLocaleString()} readings)`;
             $('liveDot').style.background = 'var(--ok)';
             updateUI(true);
           }
@@ -896,27 +895,64 @@
       return { xMin: xMax - hrs * 3600 * 1000, xMax, stepSize: undefined };
     }
 
-    // Full Range History Fetch (newest first, then reversed to chronological order)
+    // Full Range History Fetch (paginates across entire time window so the trail is never cut off)
     async function fetchHistory() {
       isFetchingHistory = true;
       const { xMin } = getTimeWindow();
       const since = new Date(xMin).toISOString();
-      const url = `${SUPABASE_URL}/rest/v1/fridge_readings?select=created_at,temp_c&created_at=gte.${encodeURIComponent(since)}&order=created_at.desc&limit=1000`;
+      const baseUrl = `${SUPABASE_URL}/rest/v1/fridge_readings?select=created_at,temp_c&created_at=gte.${encodeURIComponent(since)}&order=created_at.desc`;
+      const baseHeaders = {
+        apikey: SUPABASE_ANON_KEY,
+        Authorization: `Bearer ${SUPABASE_ANON_KEY}`
+      };
 
       try {
-        const res = await fetch(url, {
-          headers: {
-            apikey: SUPABASE_ANON_KEY,
-            Authorization: `Bearer ${SUPABASE_ANON_KEY}`
-          }
+        const firstRes = await fetch(baseUrl, {
+          headers: { ...baseHeaders, Range: '0-999', Prefer: 'count=exact' }
         });
-        if (!res.ok) throw new Error(res.status);
-        const fetched = await res.json();
-        rawRows = fetched.reverse();
+        if (!firstRes.ok) throw new Error(firstRes.status);
+        const firstPage = await firstRes.json();
+
+        const cr = firstRes.headers.get('content-range') || '';
+        const total = parseInt(cr.split('/')[1], 10) || firstPage.length;
+        let allRows = firstPage;
+
+        if (total > 1000) {
+          const maxExtraPages = 14;
+          const totalPages = Math.ceil(total / 1000);
+          const offsets = [];
+          if (totalPages - 1 <= maxExtraPages) {
+            for (let p = 1; p < totalPages; p++) offsets.push(p * 1000);
+          } else {
+            // Evenly sample 14 pages spanning all the way back to the oldest reading in the window
+            for (let i = 1; i <= maxExtraPages; i++) {
+              const off = Math.min(total - 1000, Math.round((i / maxExtraPages) * (total - 1000)));
+              if (off >= 1000 && !offsets.includes(off)) offsets.push(off);
+            }
+          }
+
+          const pages = await Promise.all(offsets.map(off =>
+            fetch(baseUrl, {
+              headers: { ...baseHeaders, Range: `${off}-${off + 999}` }
+            }).then(r => (r.ok ? r.json() : [])).catch(() => [])
+          ));
+          pages.forEach(p => { allRows = allRows.concat(p); });
+        }
+
+        // Sort chronologically (oldest -> newest) and deduplicate
+        allRows.sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+        const dedup = [];
+        for (let i = 0; i < allRows.length; i++) {
+          if (i === 0 || allRows[i].created_at !== allRows[i - 1].created_at) {
+            dedup.push(allRows[i]);
+          }
+        }
+        rawRows = dedup;
+
         if (rawRows.length > 0) {
           lastKnownTimestamp = rawRows[rawRows.length - 1].created_at;
         }
-        $('connLabel').textContent = `Cloud Live (${rawRows.length} readings)`;
+        $('connLabel').textContent = `Cloud Live (${total.toLocaleString()} readings)`;
         $('liveDot').style.background = 'var(--ok)';
         updateUI(false);
       } catch (err) {
@@ -1025,8 +1061,10 @@
         if (last && last.temp_c !== null) {
           const pts = chartInstance.data.datasets[0].data;
           pts.push({ x: new Date(last.created_at).getTime(), y: toDisp(last.temp_c) });
-          if (pts.length > 1000) pts.shift();
           const { xMin, xMax } = getTimeWindow();
+          if (hrs !== 24) {
+            while (pts.length > 0 && pts[0].x < xMin) pts.shift();
+          }
           chartInstance.options.scales.x.min = xMin;
           chartInstance.options.scales.x.max = xMax;
           const { yMin, yMax } = getYBounds(pts);
@@ -1038,6 +1076,17 @@
         renderChart(rawRows);
         renderTableModal(rawRows);
       }
+    }
+
+    function downsamplePoints(points, maxPts = 800) {
+      if (points.length <= maxPts) return points;
+      const out = [];
+      const step = (points.length - 1) / (maxPts - 1);
+      for (let i = 0; i < maxPts - 1; i++) {
+        out.push(points[Math.round(i * step)]);
+      }
+      out.push(points[points.length - 1]);
+      return out;
     }
 
     function getYBounds(points) {
@@ -1060,11 +1109,12 @@
     function renderChart(data) {
       const ctx = $('tempChart').getContext('2d');
       const { xMin, xMax, stepSize } = getTimeWindow();
-      const points = data.map(d => ({
+      const allPoints = data.map(d => ({
         x: new Date(d.created_at).getTime(),
         y: toDisp(d.temp_c)
       }));
-      const { yMin, yMax } = getYBounds(points);
+      const points = downsamplePoints(allPoints, 800);
+      const { yMin, yMax } = getYBounds(allPoints);
 
       const isDark = theme === 'dark';
       const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
@@ -1311,8 +1361,8 @@
 
     // Start
     fetchHistory();
-    setInterval(pollLatest, 1000);   // Live 1-second ticker
-    setInterval(fetchHistory, 30000); // Periodic 30s background sync
+    setInterval(pollLatest, 1000);    // Live 1-second ticker
+    setInterval(fetchHistory, 300000); // Periodic 5m full-history resync
   </script>
 </body>
 </html>
