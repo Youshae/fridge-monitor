@@ -723,7 +723,7 @@
     </section>
 
     <footer>
-      Auto-syncing every 5s &bull; Supabase REST &bull; Temp Cloud Monitor
+      Auto-syncing every 1s &bull; Supabase REST &bull; Temp Cloud Monitor
     </footer>
   </div>
 
@@ -756,7 +756,7 @@
     const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InNpcHBzcHZnbHFxZW1vdHhnc3hsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUyNzk4MTcsImV4cCI6MjExMDg1NTgxN30.Z54wC47W6N2roQfKQvAA1uL5z6VQBjX3a53beNQ-l4w";
     const MIN_NORMAL_C = 2.0;
     const MAX_NORMAL_C = 8.0;
-    const STALE_SECONDS = 35;
+    const STALE_SECONDS = 15;
 
     const $ = id => document.getElementById(id);
 
@@ -868,7 +868,7 @@
       demoMode = !demoMode;
       localStorage.setItem('fg_demo', demoMode);
       updateDemoButton();
-      poll();
+      fetchHistory();
     });
 
     // Time Tabs
@@ -876,7 +876,7 @@
       b.addEventListener('click', () => {
         hrs = +b.dataset.h;
         document.querySelectorAll('#timeTabs button').forEach(x => x.classList.toggle('active', x === b));
-        poll();
+        fetchHistory();
       });
     });
 
@@ -884,21 +884,53 @@
     $('refreshBtn').addEventListener('click', () => {
       $('refreshBtn').classList.add('spinning');
       if (navigator.vibrate) navigator.vibrate(30);
-      poll().then(() => setTimeout(() => $('refreshBtn').classList.remove('spinning'), 500));
+      fetchHistory().then(() => setTimeout(() => $('refreshBtn').classList.remove('spinning'), 500));
     });
 
-    // Poll Supabase or Demo
-    async function poll() {
+    let lastKnownTimestamp = null;
+    let isFetchingHistory = false;
+
+    // Fast 1-Second Live Reading Fetch
+    async function pollLatest() {
+      if (demoMode || isFetchingHistory) return;
+      const url = `${SUPABASE_URL}/rest/v1/fridge_readings?select=created_at,temp_c&order=created_at.desc&limit=1`;
+      try {
+        const res = await fetch(url, {
+          headers: {
+            apikey: SUPABASE_ANON_KEY,
+            Authorization: `Bearer ${SUPABASE_ANON_KEY}`
+          }
+        });
+        if (!res.ok) throw new Error(res.status);
+        const latestArr = await res.json();
+        if (latestArr && latestArr.length > 0) {
+          const point = latestArr[0];
+          if (point.created_at !== lastKnownTimestamp) {
+            lastKnownTimestamp = point.created_at;
+            if (!rawRows.length || rawRows[rawRows.length - 1].created_at !== point.created_at) {
+              rawRows.push(point);
+              if (rawRows.length > 3600) rawRows.shift();
+            }
+            $('connLabel').textContent = `Cloud Live (${rawRows.length} readings)`;
+            $('liveDot').style.background = 'var(--ok)';
+            updateUI(true);
+          }
+        }
+      } catch (e) {}
+    }
+
+    // Full Range History Fetch
+    async function fetchHistory() {
       if (demoMode) {
         rawRows = generateDemoData();
-        updateUI();
+        updateUI(false);
         $('connLabel').textContent = 'Demo Mode (Simulated)';
         $('liveDot').style.background = 'var(--primary)';
         return;
       }
-
+      isFetchingHistory = true;
       const since = new Date(Date.now() - hrs * 3600 * 1000).toISOString();
-      const url = `${SUPABASE_URL}/rest/v1/fridge_readings?select=created_at,temp_c&created_at=gte.${encodeURIComponent(since)}&order=created_at.asc&limit=10080`;
+      const url = `${SUPABASE_URL}/rest/v1/fridge_readings?select=created_at,temp_c&created_at=gte.${encodeURIComponent(since)}&order=created_at.asc&limit=3600`;
 
       try {
         const res = await fetch(url, {
@@ -909,20 +941,24 @@
         });
         if (!res.ok) throw new Error(res.status);
         rawRows = await res.json();
-
+        if (rawRows.length > 0) {
+          lastKnownTimestamp = rawRows[rawRows.length - 1].created_at;
+        }
         $('connLabel').textContent = `Cloud Live (${rawRows.length} readings)`;
         $('liveDot').style.background = 'var(--ok)';
-        updateUI();
+        updateUI(false);
       } catch (err) {
         $('connLabel').textContent = 'Cloud Disconnected';
         $('liveDot').style.background = 'var(--bad)';
         $('statusBadge').className = 'status-badge bad';
         $('badgeText').textContent = 'Database unreachable';
+      } finally {
+        isFetchingHistory = false;
       }
     }
 
     // Main UI Update
-    function updateUI() {
+    function updateUI(fast = false) {
       const latest = rawRows.length ? rawRows[rawRows.length - 1] : null;
       const t = latest ? latest.temp_c : null;
       const ageSec = latest ? (Date.now() - new Date(latest.created_at).getTime()) / 1000 : Infinity;
@@ -1012,8 +1048,25 @@
         $('statMaxTime').textContent = 'Check probe';
       }
 
-      renderChart(rawRows);
-      renderTableModal(rawRows);
+      if (fast && chartInstance) {
+        const last = rawRows[rawRows.length - 1];
+        if (last && last.temp_c !== null) {
+          const d = new Date(last.created_at);
+          const lbl = hrs > 24 
+            ? `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
+            : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+          chartInstance.data.labels.push(lbl);
+          chartInstance.data.datasets[0].data.push(toDisp(last.temp_c));
+          if (chartInstance.data.labels.length > 500) {
+            chartInstance.data.labels.shift();
+            chartInstance.data.datasets[0].data.shift();
+          }
+          chartInstance.update('none');
+        }
+      } else {
+        renderChart(rawRows);
+        renderTableModal(rawRows);
+      }
     }
 
     // Chart.js Rendering
@@ -1217,8 +1270,9 @@
     });
 
     // Start
-    poll();
-    setInterval(poll, 5000);
+    fetchHistory();
+    setInterval(pollLatest, 1000);   // Live 1-second ticker
+    setInterval(fetchHistory, 30000); // Periodic 30s background sync
   </script>
 </body>
 </html>
