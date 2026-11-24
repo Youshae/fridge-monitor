@@ -1029,12 +1029,31 @@
           const { xMin, xMax } = getTimeWindow();
           chartInstance.options.scales.x.min = xMin;
           chartInstance.options.scales.x.max = xMax;
+          const { yMin, yMax } = getYBounds(pts);
+          chartInstance.options.scales.y.min = yMin;
+          chartInstance.options.scales.y.max = yMax;
           chartInstance.update('none');
         }
       } else {
         renderChart(rawRows);
         renderTableModal(rawRows);
       }
+    }
+
+    function getYBounds(points) {
+      const minNorm = toDisp(MIN_NORMAL_C);
+      const maxNorm = toDisp(MAX_NORMAL_C);
+      const validY = points.map(p => p.y).filter(v => v !== null && !isNaN(v));
+      const pad = unit === 'F' ? 2 : 1;
+      if (!validY.length) {
+        return { yMin: Math.floor(minNorm - pad), yMax: Math.ceil(maxNorm + pad) };
+      }
+      const dataMin = Math.min(...validY);
+      const dataMax = Math.max(...validY);
+      return {
+        yMin: Math.floor(Math.min(dataMin, minNorm) - pad),
+        yMax: Math.ceil(Math.max(dataMax, maxNorm) + pad)
+      };
     }
 
     // Chart.js Rendering
@@ -1045,6 +1064,7 @@
         x: new Date(d.created_at).getTime(),
         y: toDisp(d.temp_c)
       }));
+      const { yMin, yMax } = getYBounds(points);
 
       const isDark = theme === 'dark';
       const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
@@ -1091,11 +1111,11 @@
         sx.ticks.maxTicksLimit = hrs === 24 ? 7 : 6;
 
         const sy = chartInstance.options.scales.y;
-        sy.min = unit === 'F' ? 32 : 0;
-        sy.max = unit === 'F' ? 86 : 30;
+        sy.min = yMin;
+        sy.max = yMax;
         sy.grid.color = gridColor;
         sy.ticks.color = textColor;
-        sy.ticks.stepSize = unit === 'F' ? 10 : 5;
+        sy.ticks.stepSize = undefined;
 
         chartInstance.update('none');
         return;
@@ -1170,13 +1190,13 @@
               }
             },
             y: {
-              min: unit === 'F' ? 32 : 0,
-              max: unit === 'F' ? 86 : 30,
+              min: yMin,
+              max: yMax,
               grid: { color: gridColor },
               ticks: {
                 color: textColor,
                 font: { size: 10, family: 'JetBrains Mono' },
-                stepSize: unit === 'F' ? 10 : 5,
+                maxTicksLimit: 7,
                 callback: v => `${v}°`
               }
             }
@@ -1189,8 +1209,9 @@
             const xAxis = chart.scales.x;
             const minNorm = unit === 'F' ? 35.6 : 2.0;
             const maxNorm = unit === 'F' ? 46.4 : 8.0;
-            const yTop = yAxis.getPixelForValue(maxNorm);
-            const yBottom = yAxis.getPixelForValue(minNorm);
+            const yTop = Math.max(yAxis.top, yAxis.getPixelForValue(maxNorm));
+            const yBottom = Math.min(yAxis.bottom, yAxis.getPixelForValue(minNorm));
+            if (yBottom <= yTop) return;
             const c = chart.ctx;
             c.save();
             c.fillStyle = (theme === 'dark') ? 'rgba(16, 185, 129, 0.08)' : 'rgba(5, 150, 105, 0.07)';
