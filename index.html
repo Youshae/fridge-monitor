@@ -1313,6 +1313,10 @@
       });
     }
 
+    const PKT_TZ = 'Asia/Karachi';
+    const formatPktDate = d => d.toLocaleDateString('en-GB', { timeZone: PKT_TZ, day: '2-digit', month: 'short', year: 'numeric' });
+    const formatPktTime = d => d.toLocaleTimeString('en-US', { timeZone: PKT_TZ, hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: true });
+
     // Modal Logs Table
     function renderTableModal(data) {
       const tbody = $('logTableBody');
@@ -1325,7 +1329,7 @@
 
       tbody.innerHTML = recent.map(r => {
         const d = new Date(r.created_at);
-        const timeStr = d.toLocaleDateString() + ' ' + d.toLocaleTimeString();
+        const timeStr = `${formatPktDate(d)}, ${formatPktTime(d)}`;
         const tStr = r.temp_c !== null ? `${formatTemp(r.temp_c)} °${unit}` : '<span style="color:var(--warn)">Null</span>';
         const st = r.temp_c === null ? '<span style="color:var(--warn)">Disconnected</span>' : (r.temp_c > MAX_NORMAL_C ? '<span style="color:var(--bad)">Too Warm</span>' : (r.temp_c < MIN_NORMAL_C ? '<span style="color:var(--warn)">Too Cold</span>' : '<span style="color:var(--ok)">Normal</span>'));
         return `<tr><td>${timeStr}</td><td>${tStr}</td><td>${st}</td></tr>`;
@@ -1342,19 +1346,25 @@
       if (e.target === $('modalOverlay')) $('modalOverlay').classList.remove('open');
     });
 
-    // Export CSV
+    // Export CSV (Friendly Pakistan Time - Asia/Karachi)
     $('exportCsvBtn').addEventListener('click', () => {
       if (!rawRows.length) return alert('No data available to export.');
-      let csv = "created_at,temp_c,temp_f\n";
+      let csv = "\uFEFFDate,Time (PKT),Temp (°C),Temp (°F),Status\n";
       rawRows.forEach(r => {
+        const d = new Date(r.created_at);
+        const dateStr = formatPktDate(d);
+        const timeStr = formatPktTime(d);
+        const c = r.temp_c !== null ? r.temp_c.toFixed(2) : "";
         const f = r.temp_c !== null ? (r.temp_c * 9/5 + 32).toFixed(2) : "";
-        csv += `"${r.created_at}",${r.temp_c !== null ? r.temp_c.toFixed(2) : ""},${f}\n`;
+        const st = r.temp_c === null ? "Disconnected" : (r.temp_c > MAX_NORMAL_C ? "Too Warm" : (r.temp_c < MIN_NORMAL_C ? "Too Cold" : "Normal"));
+        csv += `"${dateStr}","${timeStr}",${c},${f},"${st}"\n`;
       });
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `fridge_data_${new Date().toISOString().slice(0,10)}.csv`;
+      const pktToday = new Date().toLocaleDateString('en-CA', { timeZone: PKT_TZ });
+      a.download = `temp_cloud_${pktToday}.csv`;
       a.click();
       URL.revokeObjectURL(url);
     });
