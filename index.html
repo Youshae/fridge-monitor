@@ -674,8 +674,8 @@
 
         <div class="time-tabs" id="timeTabs">
           <button class="tab-btn" data-h="1">1h</button>
-          <button class="tab-btn active" data-h="6">6h</button>
-          <button class="tab-btn" data-h="24">24h</button>
+          <button class="tab-btn" data-h="6">6h</button>
+          <button class="tab-btn active" data-h="24">24h</button>
           <button class="tab-btn" data-h="168">7d</button>
         </div>
       </div>
@@ -703,12 +703,6 @@
 
     <!-- Quick Action Bar -->
     <section class="quick-bar">
-      <!-- Toggle Demo Data -->
-      <button class="action-pill" id="demoToggleBtn">
-        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-        <span id="demoBtnLabel">Simulate Demo Data</span>
-      </button>
-
       <!-- View Raw Table Logs -->
       <button class="action-pill" id="viewTableBtn">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h18v18H3zM3 9h18M3 15h18M9 3v18"/></svg>
@@ -762,10 +756,9 @@
 
     // State
     let unit = localStorage.getItem('fg_unit') || 'C';
-    let hrs = 6;
+    let hrs = 24;
     let theme = localStorage.getItem('fg_theme') || 'dark';
     let audioAlert = localStorage.getItem('fg_audio') === 'true';
-    let demoMode = localStorage.getItem('fg_demo') === 'true';
     let rawRows = [];
     let chartInstance = null;
     let audioCtx = null;
@@ -841,36 +834,6 @@
     }
     if (unit === 'F') setUnit('F');
 
-    // Demo Mode Generator
-    function generateDemoData() {
-      const rows = [];
-      const now = Date.now();
-      const count = hrs * 60;
-      for (let i = count; i >= 0; i--) {
-        const time = new Date(now - i * 60 * 1000).toISOString();
-        // Simulate compressor cycle: oscillating between 2.2C and 5.5C with slight noise
-        const cycle = Math.sin((count - i) / 25) * 1.8 + 3.8;
-        const temp = parseFloat((cycle + (Math.random() * 0.4 - 0.2)).toFixed(1));
-        rows.push({ created_at: time, temp_c: temp });
-      }
-      return rows;
-    }
-
-    // Toggle Demo Button
-    const demoBtn = $('demoToggleBtn');
-    function updateDemoButton() {
-      demoBtn.classList.toggle('active-pill', demoMode);
-      $('demoBtnLabel').textContent = demoMode ? 'Exit Demo (Use Live)' : 'Simulate Demo Data';
-    }
-    updateDemoButton();
-
-    demoBtn.addEventListener('click', () => {
-      demoMode = !demoMode;
-      localStorage.setItem('fg_demo', demoMode);
-      updateDemoButton();
-      fetchHistory();
-    });
-
     // Time Tabs
     document.querySelectorAll('#timeTabs button').forEach(b => {
       b.addEventListener('click', () => {
@@ -892,7 +855,7 @@
 
     // Fast 1-Second Live Reading Fetch
     async function pollLatest() {
-      if (demoMode || isFetchingHistory) return;
+      if (isFetchingHistory) return;
       const url = `${SUPABASE_URL}/rest/v1/fridge_readings?select=created_at,temp_c&order=created_at.desc&limit=1`;
       try {
         const res = await fetch(url, {
@@ -909,7 +872,7 @@
             lastKnownTimestamp = point.created_at;
             if (!rawRows.length || rawRows[rawRows.length - 1].created_at !== point.created_at) {
               rawRows.push(point);
-              if (rawRows.length > 3600) rawRows.shift();
+              if (rawRows.length > 1000) rawRows.shift();
             }
             $('connLabel').textContent = `Cloud Live (${rawRows.length} readings)`;
             $('liveDot').style.background = 'var(--ok)';
@@ -919,18 +882,11 @@
       } catch (e) {}
     }
 
-    // Full Range History Fetch
+    // Full Range History Fetch (newest first, then reversed to chronological order)
     async function fetchHistory() {
-      if (demoMode) {
-        rawRows = generateDemoData();
-        updateUI(false);
-        $('connLabel').textContent = 'Demo Mode (Simulated)';
-        $('liveDot').style.background = 'var(--primary)';
-        return;
-      }
       isFetchingHistory = true;
       const since = new Date(Date.now() - hrs * 3600 * 1000).toISOString();
-      const url = `${SUPABASE_URL}/rest/v1/fridge_readings?select=created_at,temp_c&created_at=gte.${encodeURIComponent(since)}&order=created_at.asc&limit=3600`;
+      const url = `${SUPABASE_URL}/rest/v1/fridge_readings?select=created_at,temp_c&created_at=gte.${encodeURIComponent(since)}&order=created_at.desc&limit=1000`;
 
       try {
         const res = await fetch(url, {
@@ -940,7 +896,8 @@
           }
         });
         if (!res.ok) throw new Error(res.status);
-        rawRows = await res.json();
+        const fetched = await res.json();
+        rawRows = fetched.reverse();
         if (rawRows.length > 0) {
           lastKnownTimestamp = rawRows[rawRows.length - 1].created_at;
         }
