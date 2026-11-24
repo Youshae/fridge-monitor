@@ -882,10 +882,25 @@
       } catch (e) {}
     }
 
+    function getTimeWindow() {
+      const now = new Date();
+      if (hrs === 24) {
+        const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0).getTime();
+        return {
+          xMin: startOfDay,
+          xMax: startOfDay + 24 * 3600 * 1000,
+          stepSize: 4 * 3600 * 1000
+        };
+      }
+      const xMax = now.getTime();
+      return { xMin: xMax - hrs * 3600 * 1000, xMax, stepSize: undefined };
+    }
+
     // Full Range History Fetch (newest first, then reversed to chronological order)
     async function fetchHistory() {
       isFetchingHistory = true;
-      const since = new Date(Date.now() - hrs * 3600 * 1000).toISOString();
+      const { xMin } = getTimeWindow();
+      const since = new Date(xMin).toISOString();
       const url = `${SUPABASE_URL}/rest/v1/fridge_readings?select=created_at,temp_c&created_at=gte.${encodeURIComponent(since)}&order=created_at.desc&limit=1000`;
 
       try {
@@ -1008,16 +1023,12 @@
       if (fast && chartInstance) {
         const last = rawRows[rawRows.length - 1];
         if (last && last.temp_c !== null) {
-          const d = new Date(last.created_at);
-          const lbl = hrs > 24 
-            ? `${d.getMonth()+1}/${d.getDate()} ${d.getHours()}:${String(d.getMinutes()).padStart(2, '0')}`
-            : d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-          chartInstance.data.labels.push(lbl);
-          chartInstance.data.datasets[0].data.push(toDisp(last.temp_c));
-          if (chartInstance.data.labels.length > 500) {
-            chartInstance.data.labels.shift();
-            chartInstance.data.datasets[0].data.shift();
-          }
+          const pts = chartInstance.data.datasets[0].data;
+          pts.push({ x: new Date(last.created_at).getTime(), y: toDisp(last.temp_c) });
+          if (pts.length > 1000) pts.shift();
+          const { xMin, xMax } = getTimeWindow();
+          chartInstance.options.scales.x.min = xMin;
+          chartInstance.options.scales.x.max = xMax;
           chartInstance.update('none');
         }
       } else {
@@ -1029,16 +1040,11 @@
     // Chart.js Rendering
     function renderChart(data) {
       const ctx = $('tempChart').getContext('2d');
-      const valid = data.filter(d => d.temp_c !== null);
-
-      const labels = data.map(d => {
-        const date = new Date(d.created_at);
-        return hrs > 24 
-          ? `${date.getMonth()+1}/${date.getDate()} ${date.getHours()}:${String(date.getMinutes()).padStart(2, '0')}`
-          : date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      });
-
-      const values = data.map(d => toDisp(d.temp_c));
+      const { xMin, xMax, stepSize } = getTimeWindow();
+      const points = data.map(d => ({
+        x: new Date(d.created_at).getTime(),
+        y: toDisp(d.temp_c)
+      }));
 
       const isDark = theme === 'dark';
       const gridColor = isDark ? 'rgba(255, 255, 255, 0.06)' : 'rgba(0, 0, 0, 0.06)';
@@ -1049,11 +1055,24 @@
       gradient.addColorStop(0, isDark ? 'rgba(0, 210, 211, 0.35)' : 'rgba(2, 132, 199, 0.25)');
       gradient.addColorStop(1, 'rgba(0, 210, 211, 0.0)');
 
+      const formatXTick = v => {
+        const d = new Date(v);
+        if (hrs === 24) {
+          const h = d.getHours();
+          if (h === 0) return '12 AM';
+          if (h === 12) return '12 PM';
+          return h < 12 ? `${h} AM` : `${h - 12} PM`;
+        }
+        if (hrs > 24) {
+          return `${d.getMonth() + 1}/${d.getDate()}`;
+        }
+        return d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      };
+
       if (chartInstance) {
-        chartInstance.data.labels = labels;
         const ds = chartInstance.data.datasets[0];
         ds.label = `Temperature (°${unit})`;
-        ds.data = values;
+        ds.data = points;
         ds.backgroundColor = gradient;
         ds.pointRadius = data.length > 60 ? 0 : 3;
 
@@ -1064,8 +1083,12 @@
         tt.borderColor = isDark ? 'rgba(92, 207, 224, 0.2)' : 'rgba(0, 100, 120, 0.2)';
 
         const sx = chartInstance.options.scales.x;
+        sx.min = xMin;
+        sx.max = xMax;
         sx.grid.color = gridColor;
         sx.ticks.color = textColor;
+        sx.ticks.stepSize = stepSize;
+        sx.ticks.maxTicksLimit = hrs === 24 ? 7 : 6;
 
         const sy = chartInstance.options.scales.y;
         sy.min = unit === 'F' ? 32 : 0;
@@ -1081,10 +1104,9 @@
       chartInstance = new Chart(ctx, {
         type: 'line',
         data: {
-          labels: labels,
           datasets: [{
             label: `Temperature (°${unit})`,
-            data: values,
+            data: points,
             borderColor: lineColor,
             borderWidth: 2.5,
             fill: true,
@@ -1102,7 +1124,8 @@
           responsive: true,
           maintainAspectRatio: false,
           interaction: {
-            mode: 'index',
+            mode: 'nearest',
+            axis: 'x',
             intersect: false,
           },
           plugins: {
@@ -1117,6 +1140,13 @@
               boxPadding: 4,
               displayColors: false,
               callbacks: {
+                title: items => {
+                  if (!items.length) return '';
+                  const d = new Date(items[0].parsed.x);
+                  return hrs > 24
+                    ? d.toLocaleDateString([], { month: 'short', day: 'numeric' }) + ' ' + d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' })
+                    : d.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit', second: '2-digit' });
+                },
                 label: context => {
                   const val = context.parsed.y;
                   return val === null ? 'No sensor reading' : ` ${val.toFixed(1)} °${unit}`;
@@ -1126,12 +1156,17 @@
           },
           scales: {
             x: {
+              type: 'linear',
+              min: xMin,
+              max: xMax,
               grid: { color: gridColor },
               ticks: {
                 color: textColor,
                 font: { size: 10, family: 'JetBrains Mono' },
-                maxTicksLimit: 6,
-                maxRotation: 0
+                stepSize: stepSize,
+                maxTicksLimit: hrs === 24 ? 7 : 6,
+                maxRotation: 0,
+                callback: formatXTick
               }
             },
             y: {
