@@ -851,11 +851,13 @@
     });
 
     let lastKnownTimestamp = null;
-    let isFetchingHistory = false;
+    let isPollingLatest = false;
+    let totalCloudCount = 0;
 
-    // Fast 1-Second Live Reading Fetch
+    // Fast 1-Second Live Reading Fetch (never blocked by history loading)
     async function pollLatest() {
-      if (isFetchingHistory) return;
+      if (isPollingLatest) return;
+      isPollingLatest = true;
       const url = `${SUPABASE_URL}/rest/v1/fridge_readings?select=created_at,temp_c&order=created_at.desc&limit=1`;
       try {
         const res = await fetch(url, {
@@ -870,15 +872,19 @@
           const point = latestArr[0];
           if (point.created_at !== lastKnownTimestamp) {
             lastKnownTimestamp = point.created_at;
-            if (!rawRows.length || rawRows[rawRows.length - 1].created_at !== point.created_at) {
+            if (!rawRows.length || new Date(point.created_at) > new Date(rawRows[rawRows.length - 1].created_at)) {
               rawRows.push(point);
+              totalCloudCount = Math.max(totalCloudCount + 1, rawRows.length);
             }
-            $('connLabel').textContent = `Cloud Live (${rawRows.length.toLocaleString()} readings)`;
+            $('connLabel').textContent = `Cloud Live (${totalCloudCount.toLocaleString()} readings)`;
             $('liveDot').style.background = 'var(--ok)';
             updateUI(true);
           }
         }
-      } catch (e) {}
+      } catch (e) {
+      } finally {
+        isPollingLatest = false;
+      }
     }
 
     function getTimeWindow() {
@@ -895,9 +901,8 @@
       return { xMin: xMax - hrs * 3600 * 1000, xMax, stepSize: undefined };
     }
 
-    // Full Range History Fetch (paginates across entire time window so the trail is never cut off)
+    // Fast Full-Window History Fetch (lightweight slices covering 100% of the trail)
     async function fetchHistory() {
-      isFetchingHistory = true;
       const { xMin } = getTimeWindow();
       const since = new Date(xMin).toISOString();
       const baseUrl = `${SUPABASE_URL}/rest/v1/fridge_readings?select=created_at,temp_c&created_at=gte.${encodeURIComponent(since)}&order=created_at.desc`;
@@ -908,35 +913,39 @@
 
       try {
         const firstRes = await fetch(baseUrl, {
-          headers: { ...baseHeaders, Range: '0-999', Prefer: 'count=exact' }
+          headers: { ...baseHeaders, Range: '0-299', Prefer: 'count=exact' }
         });
         if (!firstRes.ok) throw new Error(firstRes.status);
         const firstPage = await firstRes.json();
 
         const cr = firstRes.headers.get('content-range') || '';
         const total = parseInt(cr.split('/')[1], 10) || firstPage.length;
+        totalCloudCount = total;
         let allRows = firstPage;
 
-        if (total > 1000) {
-          const maxExtraPages = 14;
-          const totalPages = Math.ceil(total / 1000);
+        if (total > 300) {
+          const sliceSize = 100;
+          const numSlices = 10;
           const offsets = [];
-          if (totalPages - 1 <= maxExtraPages) {
-            for (let p = 1; p < totalPages; p++) offsets.push(p * 1000);
-          } else {
-            // Evenly sample 14 pages spanning all the way back to the oldest reading in the window
-            for (let i = 1; i <= maxExtraPages; i++) {
-              const off = Math.min(total - 1000, Math.round((i / maxExtraPages) * (total - 1000)));
-              if (off >= 1000 && !offsets.includes(off)) offsets.push(off);
-            }
+          for (let i = 1; i <= numSlices; i++) {
+            const off = Math.min(total - sliceSize, Math.round((i / numSlices) * (total - sliceSize)));
+            if (off >= 300 && !offsets.includes(off)) offsets.push(off);
           }
 
           const pages = await Promise.all(offsets.map(off =>
             fetch(baseUrl, {
-              headers: { ...baseHeaders, Range: `${off}-${off + 999}` }
+              headers: { ...baseHeaders, Range: `${off}-${off + sliceSize - 1}` }
             }).then(r => (r.ok ? r.json() : [])).catch(() => [])
           ));
           pages.forEach(p => { allRows = allRows.concat(p); });
+        }
+
+        // Preserve any newer live points that arrived via pollLatest() during fetch
+        if (rawRows.length > 0 && allRows.length > 0) {
+          const newestFetched = new Date(allRows[0].created_at).getTime();
+          rawRows.forEach(r => {
+            if (new Date(r.created_at).getTime() > newestFetched) allRows.push(r);
+          });
         }
 
         // Sort chronologically (oldest -> newest) and deduplicate
@@ -960,8 +969,6 @@
         $('liveDot').style.background = 'var(--bad)';
         $('statusBadge').className = 'status-badge bad';
         $('badgeText').textContent = 'Database unreachable';
-      } finally {
-        isFetchingHistory = false;
       }
     }
 
@@ -1370,7 +1377,8 @@
     });
 
     // Start
-    fetchHistory();
+    pollLatest();                     // Instant live temperature (<0.3s)
+    fetchHistory();                   // Background full-trail load
     setInterval(pollLatest, 1000);    // Live 1-second ticker
     setInterval(fetchHistory, 300000); // Periodic 5m full-history resync
   </script>
